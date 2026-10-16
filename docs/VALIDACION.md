@@ -13,3 +13,13 @@ Validación local del 16 de octubre de 2026: 18 pruebas aprobadas en Windows con
 La prueba integrada desde código convirtió los siete documentos y produjo una captura real de la ventana. El proceso de cada documento está separado del de la interfaz: se verifican también cierres nativos y tiempo máximo como errores recuperables.
 
 El resultado de CI y la prueba del `.exe` se consultan en el flujo enlazado desde el repositorio; no deben inferirse de las pruebas locales.
+
+## Versión 1.1
+
+Validación local: **24 pruebas aprobadas**, revisión Ruff sin errores y ejecutable construido con los siete conversores, búsqueda del visor y biblioteca verificados. El instalador por usuario se ejecutó en esta PC y creó la asociación y el acceso directo. La auditoría de las dependencias fijadas no encontró vulnerabilidades conocidas.
+
+Se añaden pruebas del motor reutilizable y recuperación tras cierre, filtros por nombre/tipo/tamaño/fecha, búsqueda de contenido entre bloques, subcarpetas, cancelación de búsqueda, biblioteca Qt, apertura directa por argumento de archivo, búsqueda en documento y fuente Markdown, lectura por encima del antiguo límite de 200 000 caracteres y carga de imágenes locales con bloqueo de rutas externas y de red.
+
+La prueba del ejecutable comprueba ahora también búsqueda dentro del documento, biblioteca con siete resultados y registro del comando de Windows para abrir documentos con espacios en el nombre. GitHub conserva capturas tanto del conversor como de la biblioteca. Consulta [la comparación de rendimiento](RENDIMIENTO.md).
+
+La integración con el Explorador usa Microsoft PowerToys. La presencia del controlador registrado puede comprobarse en el sistema; eso no equivale a haber inspeccionado visualmente el panel del Explorador en esta sesión.

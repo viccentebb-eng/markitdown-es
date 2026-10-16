@@ -116,7 +116,7 @@ def test_cancel_stops_before_next_document(window, qtbot, tmp_path):
     worker = BatchWorker(list(enumerate(sources)), tmp_path)
     results = []
     worker.result.connect(lambda *args: results.append(args))
-    with patch("markitdown_es.worker.convert_isolated", side_effect=slow_convert):
+    with patch("markitdown_es.engine.ConversionSession.convert", side_effect=slow_convert):
         worker.start()
         qtbot.waitUntil(entered.is_set, timeout=30000)
         worker.requestInterruption()

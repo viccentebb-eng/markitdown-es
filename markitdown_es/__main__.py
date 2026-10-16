@@ -39,6 +39,9 @@ def create_app():
 def main():
     app = create_app()
     window = MainWindow()
+    for argument in sys.argv[1:]:
+        if not argument.startswith("--"):
+            window.open_document(Path(argument))
     window.show()
     return app.exec()
 

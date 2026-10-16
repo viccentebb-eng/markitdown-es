@@ -1,10 +1,10 @@
 import sys
 
 if __name__ == "__main__":
-    if len(sys.argv) == 5 and sys.argv[1] == "--convert-one":
-        from markitdown_es.convert_one import main
+    if len(sys.argv) == 3 and sys.argv[1] == "--serve":
+        from markitdown_es.engine import serve
 
-        raise SystemExit(main(*sys.argv[2:]))
+        raise SystemExit(serve(sys.argv[2]))
     if len(sys.argv) == 4 and sys.argv[1] == "--smoke-test":
         from scripts.smoke_test import run
 

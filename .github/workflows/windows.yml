@@ -42,6 +42,11 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "El ejecutable falló: $($process.ExitCode)" }
           $report = Get-Content build/smoke/smoke.json -Raw | ConvertFrom-Json
           if (-not $report.ok) { throw "Falló la conversión empaquetada" }
+      - name: Verificar registro del visor para doble clic
+        run: |
+          ./scripts/windows_install.ps1 -SourceDirectory dist/MarkItDown-ES -NoCopy
+          $command = (Get-Item 'HKCU:\Software\Classes\MarkItDownES.Document\shell\open\command').GetValue('')
+          if (-not $command.Contains('"%1"')) { throw 'El registro no conserva el nombre del documento como argumento' }
       - uses: actions/upload-artifact@v4
         with:
           name: MarkItDown-ES-Windows-x64
@@ -50,6 +55,7 @@ jobs:
             dist/*.sha256
             build/smoke/smoke.json
             build/smoke/interfaz.png
+            build/smoke/biblioteca.png
           if-no-files-found: error
           retention-days: 30
 

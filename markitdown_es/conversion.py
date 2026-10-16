@@ -56,8 +56,19 @@ def convert_file(source: Path, output: Path, converter) -> Path:
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     # Local-only entry point: never interpret a filename as a URL.
-    result = converter.convert_local(str(source))
-    markdown = result.markdown
+    if source.suffix.lower() in {".txt", ".md"}:
+        try:
+            markdown = source.read_text(encoding="utf-8-sig")
+        except UnicodeDecodeError:
+            from charset_normalizer import from_path
+
+            detected = from_path(source).best()
+            if detected is None:
+                raise ValueError("No se reconoce la codificación del texto.") from None
+            markdown = str(detected)
+    else:
+        result = converter.convert_local(str(source))
+        markdown = result.markdown
     if not markdown.strip():
         raise ValueError("No se encontró texto. Si es un PDF escaneado, requiere OCR externo.")
     # Exclusive creation protects existing files, even across concurrent instances.

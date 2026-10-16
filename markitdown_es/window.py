@@ -4,7 +4,6 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, QStandardPaths, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QApplication,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -13,12 +12,10 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
-    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QSplitter,
     QTabWidget,
-    QTextBrowser,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -26,9 +23,12 @@ from PySide6.QtWidgets import (
 )
 
 from .conversion import EXTENSIONS, friendly_error, validate_source
+from .engine import ConversionSession
+from .library import FileLibrary
+from .viewer import DocumentViewer, SafePreview
 from .worker import BatchWorker
 
-PREVIEW_LIMIT = 200_000
+__all__ = ["MainWindow", "SafePreview"]
 
 
 @dataclass
@@ -37,22 +37,6 @@ class Job:
     row: QTreeWidgetItem
     destination: Path | None = None
     error: str = ""
-
-
-class SafePreview(QTextBrowser):
-    def __init__(self):
-        super().__init__()
-        self.setOpenLinks(False)
-        self.setOpenExternalLinks(False)
-        self.setAccessibleName("Vista previa del documento Markdown")
-        self.document().setDefaultStyleSheet(
-            "body { color: #172b3a; } h1, h2, h3 { color: #16394b; } "
-            "pre { background: #f2f5f7; } th, td { padding: 6px; }"
-        )
-
-    def loadResource(self, resource_type, name):
-        # Document images/links must not read other local files or call the network.
-        return None
 
 
 def button(text, callback, name=""):
@@ -76,11 +60,12 @@ class MainWindow(QMainWindow):
         self.settings = settings if settings is not None else QSettings()
         self.jobs: list[Job] = []
         self.worker: BatchWorker | None = None
+        self.session = ConversionSession()
         self.completed = 0
         self.total = 0
-        self.setWindowTitle("MarkItDown · Documentos a Markdown")
-        self.resize(1180, 800)
-        self.setMinimumSize(900, 680)
+        self.setWindowTitle("MarkItDown ES · Convertir, explorar y leer")
+        self.resize(1380, 920)
+        self.setMinimumSize(1100, 780)
         self.setAcceptDrops(True)
         root = QWidget()
         root.setObjectName("root")
@@ -139,7 +124,13 @@ class MainWindow(QMainWindow):
         actions.addWidget(self.clear_button)
         actions.addStretch()
         left_layout.addLayout(actions)
-        splitter.addWidget(left)
+        self.navigation = QTabWidget()
+        self.navigation.addTab(left, "Conversión")
+        self.library = FileLibrary()
+        self.library.selected.connect(self.open_document)
+        self.library.convert_requested.connect(self.convert_from_library)
+        self.navigation.addTab(self.library, "Mis documentos")
+        splitter.addWidget(self.navigation)
 
         right = QFrame()
         right.setObjectName("panel")
@@ -147,25 +138,18 @@ class MainWindow(QMainWindow):
         right_layout.setContentsMargins(20, 20, 20, 16)
         right_layout.setSpacing(12)
         preview_top = QHBoxLayout()
-        preview_top.addWidget(label("Vista previa", "section"), 1)
-        self.copy_button = button("Copiar Markdown", self.copy_markdown)
-        self.copy_button.setEnabled(False)
-        preview_top.addWidget(self.copy_button)
+        preview_top.addWidget(label("Visor de documentos", "section"), 1)
+        preview_top.addWidget(button("Abrir Markdown…", self.choose_document))
+        preview_top.addWidget(button("Explorador de Windows", self.windows_help))
         right_layout.addLayout(preview_top)
-        self.preview_name = label("Selecciona un archivo convertido", "muted")
-        self.preview_name.setMinimumHeight(32)
-        right_layout.addWidget(self.preview_name)
-        self.tabs = QTabWidget()
-        self.preview = SafePreview()
-        self.source = QPlainTextEdit()
-        self.source.setReadOnly(True)
-        self.source.setAccessibleName("Código fuente Markdown")
-        self.tabs.addTab(self.preview, "Documento")
-        self.tabs.addTab(self.source, "Markdown")
-        right_layout.addWidget(self.tabs, 1)
+        self.viewer = DocumentViewer()
+        self.preview, self.source = self.viewer.preview, self.viewer.source
+        self.copy_button, self.preview_name = self.viewer.copy, self.viewer.title
+        self.tabs = self.viewer.tabs
+        right_layout.addWidget(self.viewer, 1)
         right_layout.addWidget(
             label(
-                "Encabezados, listas y tablas. Las imágenes y enlaces externos no se abren en la vista previa.",
+                "Lee el documento, busca en su texto y explora tus resultados. Las imágenes locales se muestran; las remotas se bloquean.",
                 "muted",
             )
         )
@@ -174,6 +158,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(splitter, 1)
 
         output_panel = QFrame()
+        self.output_panel = output_panel
         output_panel.setObjectName("panel")
         output_layout = QVBoxLayout(output_panel)
         output_layout.setContentsMargins(20, 16, 20, 16)
@@ -184,6 +169,7 @@ class MainWindow(QMainWindow):
         )
         default = str(Path(documents or Path.home()) / "MarkItDown")
         self.output = QLineEdit(str(self.settings.value("output", default)))
+        self.library.folder.setText(self.output.text())
         self.output.setAccessibleName("Carpeta donde se guardarán los archivos Markdown")
         output_row.addWidget(self.output, 1)
         self.browse_button = button("Elegir carpeta…", self.choose_output)
@@ -211,16 +197,24 @@ class MainWindow(QMainWindow):
         footer.addWidget(self.cancel_button)
         self.convert_button = button("Convertir a Markdown", self.start_batch, "primary")
         footer.addWidget(self.convert_button)
-        layout.addLayout(footer)
-        self.statusBar().showMessage(
-            "MarkItDown ES 1.0 · Aplicación independiente basada en Microsoft MarkItDown"
-        )
-        self.shortcuts = [QShortcut(QKeySequence("Ctrl+O"), self, activated=self.choose_files)]
+        self.footer_panel = QWidget()
+        self.footer_panel.setLayout(footer)
+        layout.addWidget(self.footer_panel)
+        self.navigation.currentChanged.connect(self.navigation_changed)
+        self.statusBar().showMessage("MarkItDown ES 1.1 · Visor local · Motor reutilizable")
+        self.shortcuts = [
+            QShortcut(QKeySequence("Ctrl+O"), self, activated=self.choose_document),
+            QShortcut(QKeySequence("Ctrl+F"), self, activated=self.viewer.search.setFocus),
+        ]
         self.show_preview()
         self.update_controls()
 
     def busy(self):
         return self.worker is not None
+
+    def navigation_changed(self, index):
+        self.output_panel.setVisible(index == 0)
+        self.footer_panel.setVisible(index == 0)
 
     def update_controls(self):
         busy = self.busy()
@@ -343,7 +337,7 @@ class MainWindow(QMainWindow):
             self.jobs[index].error = ""
             self.jobs[index].row.setText(1, "Pendiente")
         self.summary.setText("Preparando el motor de conversión…")
-        self.worker = BatchWorker(pending, output, self)
+        self.worker = BatchWorker(pending, output, self, session=self.session)
         self.worker.started_file.connect(self.file_started)
         self.worker.result.connect(self.file_result)
         self.worker.finished.connect(self.batch_finished)
@@ -354,6 +348,7 @@ class MainWindow(QMainWindow):
         job = self.jobs[index]
         job.row.setText(1, "Convirtiendo…")
         self.summary.setText(f"{self.completed}/{self.total} completados · {job.source.name}")
+        self.statusBar().showMessage(self.summary.text())
 
     def file_result(self, index, destination, error):
         job = self.jobs[index]
@@ -363,8 +358,9 @@ class MainWindow(QMainWindow):
         job.row.setToolTip(1, error or destination)
         self.completed += 1
         self.progress.setValue(self.completed)
-        self.queue.setCurrentItem(job.row)
-        self.show_preview()
+        if self.navigation.currentIndex() == 0:
+            self.queue.setCurrentItem(job.row)
+            self.show_preview()
 
     def cancel_batch(self):
         if self.worker:
@@ -381,6 +377,7 @@ class MainWindow(QMainWindow):
         prefix = "Lote detenido" if stopped else "Lote terminado"
         self.summary.setText(f"{prefix} · {done} convertido(s) · {errors} error(es).")
         self.update_controls()
+        self.library.refresh()
 
     def selected_job(self):
         current = self.queue.currentItem()
@@ -388,39 +385,44 @@ class MainWindow(QMainWindow):
 
     def show_preview(self, *_):
         job = self.selected_job()
-        self.copy_button.setEnabled(False)
         if job and job.destination:
-            try:
-                with job.destination.open(encoding="utf-8") as handle:
-                    text = handle.read(PREVIEW_LIMIT + 1)
-                truncated = len(text) > PREVIEW_LIMIT
-                text = text[:PREVIEW_LIMIT]
-                self.preview.setMarkdown(text)
-                self.source.setPlainText(text)
-                suffix = " · Vista limitada a 200 000 caracteres" if truncated else ""
-                self.preview_name.setText(job.destination.name + suffix)
-                self.copy_button.setEnabled(True)
-                return
-            except OSError:
-                message = "El archivo de salida se movió o no se puede leer."
+            self.viewer.open_path(job.destination)
+            return
         elif job and job.error:
             message = job.error
+        elif job and job.source.suffix.lower() in {".md", ".txt"}:
+            self.viewer.open_path(job.source)
+            return
         else:
-            message = "Tu documento aparecerá aquí después de convertirlo."
-        self.preview_name.setText(job.source.name if job else "Selecciona un archivo convertido")
-        self.preview.setPlainText(message)
-        self.source.setPlainText("")
+            message = "Abre un Markdown o convierte documentos para leerlos aquí."
+        self.viewer.message(message)
 
-    def copy_markdown(self):
-        job = self.selected_job()
-        if job and job.destination:
-            try:
-                QApplication.clipboard().setText(job.destination.read_text(encoding="utf-8"))
-                self.statusBar().showMessage("Markdown completo copiado al portapapeles.", 4000)
-            except OSError:
-                QMessageBox.warning(
-                    self, "No se pudo copiar", "El archivo de salida no está disponible."
-                )
+    def open_document(self, path):
+        self.viewer.open_path(Path(path))
+
+    def choose_document(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Abrir documento",
+            self.output.text(),
+            "Markdown y texto (*.md *.txt *.csv *.json *.xml)",
+        )
+        if path:
+            self.open_document(path)
+
+    def convert_from_library(self, path):
+        if not self.busy():
+            self.add_paths([path])
+            self.navigation.setCurrentIndex(0)
+
+    def windows_help(self):
+        QMessageBox.information(
+            self,
+            "Markdown en el Explorador de Windows",
+            "Ejecuta Instalar-MarkItDown.cmd de la carpeta descargada para registrar el visor y abrir .md con doble clic.\n\n"
+            "Para la vista previa en el Explorador: instala Microsoft PowerToys, activa Complementos del Explorador > Markdown y muestra el Panel de vista previa (Alt+P).\n\n"
+            "La guía completa está en docs/EXPLORADOR.md.",
+        )
 
     def closeEvent(self, event):
         if self.busy():
@@ -432,4 +434,8 @@ class MainWindow(QMainWindow):
             )
             event.ignore()
         else:
+            if not self.library.stop():
+                event.ignore()
+                return
+            self.session.close()
             event.accept()
