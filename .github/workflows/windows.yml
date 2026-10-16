@@ -1,0 +1,70 @@
+name: Windows · Pruebas y ejecutable
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Instalar dependencias verificadas
+        run: |
+          python -m pip install -r requirements.lock
+          python -m pip install --no-deps -e .
+      - name: Revisar código y convertir documentos reales
+        run: |
+          python -m ruff check .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q
+      - name: Auditar dependencias
+        run: python -m pip_audit --disable-pip --no-deps -r requirements.lock
+      - name: Crear ejecutable portable
+        run: ./scripts/build.ps1
+      - name: Probar el ejecutable empaquetado
+        run: |
+          $process = Start-Process -FilePath dist/MarkItDown-ES/MarkItDown-ES.exe -ArgumentList '--smoke-test', 'tests/fixtures', 'build/smoke' -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "El ejecutable falló: $($process.ExitCode)" }
+          $report = Get-Content build/smoke/smoke.json -Raw | ConvertFrom-Json
+          if (-not $report.ok) { throw "Falló la conversión empaquetada" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarkItDown-ES-Windows-x64
+          path: |
+            dist/*.zip
+            dist/*.sha256
+            build/smoke/smoke.json
+            build/smoke/interfaz.png
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: MarkItDown-ES-Windows-x64
+          path: artifacts
+      - name: Publicar ZIP portable y suma SHA256
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" artifacts/dist/*.zip artifacts/dist/*.sha256 --repo "$GITHUB_REPOSITORY" --title "MarkItDown ES $GITHUB_REF_NAME" --generate-notes

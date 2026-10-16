@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "markitdown-es"
+version = "1.0.0"
+description = "Conversor de documentos a Markdown para Windows, en español"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = "MIT"
+dependencies = [
+  "PySide6-Essentials==6.12.0",
+  "markitdown[docx,pdf,pptx,xlsx,xls]==0.1.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1", "pytest-qt==4.5.0", "ruff==0.17.1", "pyinstaller==6.22.3", "pip-audit==2.10.1"]
+
+[project.gui-scripts]
+markitdown-es = "markitdown_es.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["markitdown_es*"]
+
+[tool.setuptools.package-data]
+markitdown_es = ["assets/*.png", "assets/*.ico"]
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["build", "dist"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "BLE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+qt_api = "pyside6"
