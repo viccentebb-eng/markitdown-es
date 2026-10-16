@@ -75,8 +75,8 @@ El último comando aplica la política solo a ese proceso de construcción. Gene
 El flujo de GitHub Actions instala versiones fijadas, revisa el código, convierte siete documentos de prueba, audita dependencias, construye el `.exe` y prueba **el ejecutable construido** con esos documentos. Cada ejecución correcta entrega ZIP, SHA256, informe y captura. Un tag `v*` publica una release únicamente después de superar esas comprobaciones:
 
 ```powershell
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.1.1
+git push origin v1.1.1
 ```
 
 Las muestras son sintéticas y se regeneran con `python scripts/make_fixtures.py`. No incluyen datos del usuario. Consulta [la validación](docs/VALIDACION.md) y [los componentes de terceros](THIRD_PARTY.md).

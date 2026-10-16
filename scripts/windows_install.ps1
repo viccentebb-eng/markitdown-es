@@ -29,6 +29,8 @@ New-ItemProperty -Path "$capabilities\FileAssociations" -Name '.md' -Value $prog
 New-Item -Path 'HKCU:\Software\RegisteredApplications' -Force | Out-Null
 New-ItemProperty -Path 'HKCU:\Software\RegisteredApplications' -Name 'MarkItDown ES' -Value 'Software\MarkItDownES\Capabilities' -Force | Out-Null
 $desktop = [Environment]::GetFolderPath('Desktop')
+if (-not $desktop) { $desktop = Join-Path $env:USERPROFILE 'Desktop' }
+New-Item -ItemType Directory -Path $desktop -Force | Out-Null
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut((Join-Path $desktop 'MarkItDown ES.lnk'))
 $shortcut.TargetPath = $executable
@@ -37,7 +39,7 @@ $shortcut.Save()
 Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class MarkItDownShell { [DllImport("shell32.dll")] public static extern void SHChangeNotify(int e, uint f, IntPtr a, IntPtr b); }'
 [MarkItDownShell]::SHChangeNotify(0x08000000, 0, [IntPtr]::Zero, [IntPtr]::Zero)
 Write-Host "Visor instalado en $destination"
-if ($currentChoice -and $currentChoice -ne $programId) {
+if (($currentChoice -and $currentChoice -ne $programId) -or ($oldDefault -and $oldDefault -ne $programId)) {
     Write-Host 'Hay otra aplicación predeterminada. En un archivo .md, usa Abrir con > Elegir otra aplicación > MarkItDown ES > Siempre.'
 }
 Write-Host 'Para la vista previa, instala PowerToys y activa únicamente Markdown en Complementos del Explorador. Ver docs/EXPLORADOR.md.'

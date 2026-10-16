@@ -201,7 +201,7 @@ class MainWindow(QMainWindow):
         self.footer_panel.setLayout(footer)
         layout.addWidget(self.footer_panel)
         self.navigation.currentChanged.connect(self.navigation_changed)
-        self.statusBar().showMessage("MarkItDown ES 1.1 · Visor local · Motor reutilizable")
+        self.statusBar().showMessage("MarkItDown ES 1.1.1 · Visor local · Motor reutilizable")
         self.shortcuts = [
             QShortcut(QKeySequence("Ctrl+O"), self, activated=self.choose_document),
             QShortcut(QKeySequence("Ctrl+F"), self, activated=self.viewer.search.setFocus),
@@ -330,6 +330,7 @@ class MainWindow(QMainWindow):
         if not pending:
             return
         self.settings.setValue("output", str(output.resolve()))
+        self.library.folder.setText(str(output.resolve()))
         self.completed, self.total = 0, len(pending)
         self.progress.setRange(0, self.total)
         self.progress.setValue(0)
@@ -376,6 +377,7 @@ class MainWindow(QMainWindow):
         done = sum(job.destination is not None for job in self.jobs)
         prefix = "Lote detenido" if stopped else "Lote terminado"
         self.summary.setText(f"{prefix} · {done} convertido(s) · {errors} error(es).")
+        self.statusBar().showMessage(self.summary.text())
         self.update_controls()
         self.library.refresh()
 

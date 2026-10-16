@@ -85,6 +85,10 @@ def test_batch_continues_after_error_and_preview_copies(window, qtbot, tmp_path)
     assert window.jobs[1].destination.is_file()
     assert window.progress.value() == 2
     assert "1 error" in window.summary.text()
+    assert window.library.folder.text() == window.output.text()
+    assert window.statusBar().currentMessage() == window.summary.text()
+    qtbot.waitUntil(lambda: window.library.worker is None, timeout=10000)
+    assert window.library.results.topLevelItemCount() == 1
     window.queue.setCurrentItem(window.jobs[1].row)
     assert "Proyecto Aurora" in window.preview.toPlainText()
     window.copy_button.click()
